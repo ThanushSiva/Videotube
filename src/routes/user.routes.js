@@ -1,5 +1,5 @@
 const Router = require("router");
-const { registerUser } = require("../controllers/user.controllers");
+const { registerUser, loginUser } = require("../controllers/user.controllers");
 const { upload } = require("../middleware/multer.middleware");
 
 const router = Router();
@@ -11,5 +11,7 @@ router.route("/register").post(
   ]),
   registerUser
 );
+
+router.route("/login").post(loginUser);
 
 module.exports = { router };

@@ -4,6 +4,20 @@ const { ApiResponse } = require("../utils/ApiResponse");
 const { User } = require("../models/user.models");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 
+const generateAccessAndRefreshToken = async (userId) => {
+  try {
+    const user = await User.findById(userId);
+    const accessToken = user.generateAccessToken();
+    const refreshToken = user.generateRefreshToken();
+
+    user.refreshToken = refreshToken;
+    await user.save({ ValidateBeforeSave: false });
+    return { accessToken, refreshToken };
+  } catch (error) {
+    console.log("error creating access and refresh token", error);
+  }
+};
+
 const registerUser = asyncHandler(async (req, res) => {
   if (!req.body) {
     throw new ApiError(400, "missing body");
@@ -55,4 +69,58 @@ const registerUser = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, createdUser, "user registered"));
 });
 
-module.exports = { registerUser };
+const loginUser = asyncHandler(async (req, res) => {
+  if (!req.body) {
+    throw new ApiError(400, "body is empty");
+  }
+
+  const { username, email, password } = req.body;
+
+  if (!email || !password || !username) {
+    throw new ApiError(400, "fields cannot be empty");
+  }
+
+  const user = await User.findOne({ $or: [{ username }, { email }] });
+
+  console.log(user.username);
+
+  if (!user) {
+    throw new ApiError(400, "user not found");
+  }
+
+  try {
+    const passwordCheck = await user.isPasswordCorrect(password);
+    if (!passwordCheck) {
+      throw new ApiError(400, "Incorrect password");
+    }
+  } catch (error) {
+    throw new ApiError(500, "Password verification failed", error);
+  }
+
+  console.log(user._id);
+  
+  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
+    user._id
+  );
+
+  const loggedInUser = await User
+    .findById(user._id)
+    .select("-password -refreshToken");
+
+  if (!loggedInUser) {
+    throw new ApiError(400, "user not logged in");
+  }
+
+  const option = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+  };
+
+  res
+    .status(200)
+    .cookie("accessToken", accessToken, option)
+    .cookie("refreshToken", refreshToken, option)
+    .json(new ApiResponse(200, loggedInUser, "user logged in successful"));
+});
+
+module.exports = { registerUser, loginUser };
