@@ -1,8 +1,8 @@
 const dotenv = require("dotenv");
-const connectDB = require("./db/index");
+const { connectDB } = require("./db/index");
 dotenv.config({ path: "./src/.env" });
 
-const app = require("./app");
+const { app } = require("./app");
 
 const PORT = process.env.PORT;
 
