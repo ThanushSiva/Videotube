@@ -3,6 +3,7 @@ const { ApiError } = require("../utils/ApiError");
 const { ApiResponse } = require("../utils/ApiResponse");
 const { User } = require("../models/user.models");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
+const jwt = require("jwt");
 
 const generateAccessAndRefreshToken = async (userId) => {
   try {
@@ -98,14 +99,14 @@ const loginUser = asyncHandler(async (req, res) => {
   }
 
   console.log(user._id);
-  
+
   const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
     user._id
   );
 
-  const loggedInUser = await User
-    .findById(user._id)
-    .select("-password -refreshToken");
+  const loggedInUser = await User.findById(user._id).select(
+    "-password -refreshToken"
+  );
 
   if (!loggedInUser) {
     throw new ApiError(400, "user not logged in");
@@ -123,4 +124,43 @@ const loginUser = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, loggedInUser, "user logged in successful"));
 });
 
-module.exports = { registerUser, loginUser };
+const refreshAccessToken = asyncHandler(async (req, res) => {
+  const incomingRefreshToken = eq.cookie.refreshToken;
+
+  if (!incomingRefreshToken)
+    throw new ApiError(400, "refresh token is requred");
+
+  try {
+    const decodeToken = await jwt.verify(
+      incomingRefreshToken,
+      process.env.REFRESH_TOKEN_SECRET
+    );
+    const user = User.findById(decodeToken?.id);
+    if (!user) throw new ApiError(400, "Invalid refresh token");
+    if (incomingRefreshToken !== user?.refreshToken)
+      throw new ApiError(400, "Invalid refresh token");
+    const option = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+    };
+
+    const { accessToken, refreshToken: newRefreshToken } =
+      await generateAccessAndRefreshToken(user._id);
+
+    res
+      .status(200)
+      .cookie("accessToken", accessToken, option)
+      .cookie("refreshToken", newRefreshToken, option)
+      .json(
+        new ApiResponse(
+          200,
+          { accessToken, refreshToken: newRefreshToken },
+          "access token refreshed successfully"
+        )
+      );
+  } catch (error) {
+    throw new ApiError(400, "refresh token creation error");
+  }
+});
+
+module.exports = { registerUser, loginUser, refreshAccessToken };
